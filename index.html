@@ -50,6 +50,7 @@
             stroke-dasharray: 4;
         }
         .highlight {
+            stroke: blue;
             stroke-width: 6px;
             stroke-dasharray: none;
         }
@@ -81,12 +82,28 @@
             display: none;
             margin-top: 10px;
         }
+        .dropdown-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .community-info {
+            text-align: center;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
     <h1>City of Chicago Covid 19 Orders and Their Effects</h1>
     <p>Click on any year to see the hospitalizations, cases, and deaths due to SARS-COV 19 in the city of Chicago. After clicking on a year, the city COVID-19 orders for that year will be
-    will be shown below the graph. Click on any order to see it highlighted on the graph and details of the order. You can also click </p>
+    will be shown below the graph. Click on any order to see it highlighted on the graph and details of the order. Alternatively click on "By Neighborhood" to see the hospitalizations, cases, and deaths due to SARS-COV 19 
+    for each community area in Chicago, from there a year can be selected and COVID orders can be highlighted.</p>
+    <div class="dropdown-container">
+        <label for="community-dropdown">Select Community Area: </label>
+        <select id="community-dropdown">
+            <option value="">--Select--</option>
+        </select>
+    </div>
+    <div class="community-info"></div>
     <div class="button-container">
         <button id="btn-all">All Years</button>
     </div>
@@ -99,17 +116,19 @@
     <svg width="100%" height="600"></svg>
     <div class="order-list"></div>
     <script>
-        // URL of the dataset
-        const url = "https://data.cityofchicago.org/resource/naz8-j4nc.json?$select=lab_report_date,cases_total,deaths_total,hospitalizations_total&$limit=5000";
+        // URLs of the datasets
+        const covidDataUrl = "https://data.cityofchicago.org/resource/naz8-j4nc.json?$select=lab_report_date,cases_total,deaths_total,hospitalizations_total&$limit=5000";
         const ordersUrl = "covid19_orders.csv";
+        const communityDataUrl = "https://data.cityofchicago.org/resource/xhc6-88s9.json";
 
         // Fetch the data
         Promise.all([
-            d3.json(url),
-            d3.csv(ordersUrl)
-        ]).then(([data, orders]) => {
+            d3.json(covidDataUrl),
+            d3.csv(ordersUrl),
+            d3.json(communityDataUrl)
+        ]).then(([covidData, orders, communityData]) => {
             // Parse the date and convert totals to numbers
-            data.forEach(d => {
+            covidData.forEach(d => {
                 d.lab_report_date = new Date(d.lab_report_date);
                 d.cases_total = +d.cases_total;
                 d.deaths_total = +d.deaths_total;
@@ -121,6 +140,31 @@
                 order.Date = new Date(order.Date);
             });
 
+            // Populate the dropdown menu with community area names
+            const dropdown = d3.select("#community-dropdown");
+            communityData
+                .filter(community => community.community_area_name)
+                .forEach(community => {
+                dropdown.append("option")
+                    .attr("value", community.community_area_name)
+                    .text(community.community_area_name);
+            });
+
+            // Display community information when a community is selected
+            dropdown.on("change", function() {
+                const selectedCommunity = this.value;
+                const communityInfo = communityData.find(c => c.community_area_name === selectedCommunity);
+                if (communityInfo) {
+                    d3.select(".community-info").html(`
+                        <p><strong>Community Area:</strong> ${communityInfo.community_area_name}</p>
+                        <p><strong>Rank Socioeconomic Status:</strong> ${communityInfo.rank_socioeconomic_status}</p>
+                        <p><strong>CCVI Score:</strong> ${communityInfo.ccvi_score}</p>
+                    `);
+                } else {
+                    d3.select(".community-info").html("");
+                }
+            });
+
             // Aggregate data by month
             const monthlyData = d3.nest()
                 .key(d => d3.timeMonth(d.lab_report_date))
@@ -130,7 +174,7 @@
                     deaths_total: d3.sum(values, d => d.deaths_total),
                     hospitalizations_total: d3.sum(values, d => d.hospitalizations_total)
                 }))
-                .entries(data)
+                .entries(covidData)
                 .map(d => d.value)
                 .sort((a, b) => a.lab_report_date - b.lab_report_date);
 
