@@ -219,6 +219,18 @@
         .attr("y", 50)
         .text("Hospitalizations");
 
+      legend.append("line")
+              .attr("x1", 0)
+              .attr("y1", 70)
+              .attr("x2", 10)
+              .attr("y2", 70)
+              .attr("class", "order-line");
+
+          legend.append("text")
+              .attr("x", 20)
+              .attr("y", 75)
+              .text("Dates of COVID-19 Orders");
+
       // Add year labels to the x-axis
       g.append("g")
         .attr("class", "x-axis-year")
