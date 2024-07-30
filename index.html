@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>COVID-19 Data Visualization</title>
-    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://d3js.org/d3.v5.min.js" charset="utf-8"></script>
     <style>
         .line {
             fill: none;
@@ -14,7 +14,7 @@
             stroke: steelblue;
         }
         .deaths {
-            stroke: red;
+            stroke: firebrick;
         }
         .hospitalizations {
             stroke: green;
@@ -49,6 +49,10 @@
             stroke-width: 2px;
             stroke-dasharray: 4;
         }
+        .highlight {
+            stroke-width: 6px;
+            stroke-dasharray: none;
+        }
         .button-container {
             text-align: center;
             margin-top: 20px;
@@ -58,10 +62,31 @@
             padding: 10px 20px;
             font-size: 16px;
         }
+        .order-list {
+            margin-top: 20px;
+            text-align: center;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .order-item {
+            cursor: pointer;
+            margin: 5px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            display: inline-block;
+            width: 200px;
+        }
+        .order-description {
+            display: none;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
-    <svg width="1200" height="600"></svg>
+    <h1>City of Chicago Covid 19 Orders and Their Effects</h1>
+    <p>Click on any year to see the hospitalizations, cases, and deaths due to SARS-COV 19 in the city of Chicago. After clicking on a year, the city COVID-19 orders for that year will be
+    will be shown below the graph. Click on any order to see it highlighted on the graph and details of the order. You can also click </p>
     <div class="button-container">
         <button id="btn-all">All Years</button>
     </div>
@@ -71,6 +96,8 @@
         <button id="btn-2022">2022</button>
         <button id="btn-2023">2023</button>
     </div>
+    <svg width="100%" height="600"></svg>
+    <div class="order-list"></div>
     <script>
         // URL of the dataset
         const url = "https://data.cityofchicago.org/resource/naz8-j4nc.json?$select=lab_report_date,cases_total,deaths_total,hospitalizations_total&$limit=5000";
@@ -117,8 +144,8 @@
 
                 // Set up the SVG canvas dimensions
                 const svg = d3.select("svg");
-                const margin = { top: 20, right: 30, bottom: 40, left: 50 };
-                const width = +svg.attr("width") - margin.left - margin.right;
+                const margin = { top: 20, right: 150, bottom: 40, left: 50 };
+                const width = svg.node().getBoundingClientRect().width - margin.left - margin.right;
                 const height = +svg.attr("height") - margin.top - margin.bottom - 10;
                 const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
@@ -127,7 +154,9 @@
                 const y = d3.scaleLog().base(10).range([height, 0]);
 
                 // Set the domains for the scales
-                x.domain(d3.extent(filteredData, d => d.lab_report_date));
+                const xDomain = d3.extent(filteredData, d => d.lab_report_date);
+                xDomain[1] = d3.timeMonth.offset(xDomain[1], 1); // Extend the domain to include the entire month of December
+                x.domain(xDomain);
                 y.domain([1, d3.max(filteredData, d => Math.max(d.cases_total, d.deaths_total, d.hospitalizations_total))]);
 
                 // Create axes
@@ -199,7 +228,7 @@
                 // Add legend
                 const legend = svg.append("g")
                     .attr("class", "legend")
-                    .attr("transform", `translate(${width - 100},${margin.top})`);
+                    .attr("transform", `translate(${width + 60},${margin.top})`);
 
                 legend.append("rect")
                     .attr("x", 0)
@@ -285,21 +314,33 @@
                         tooltip.style("opacity", 0);
                     });
 
-                // Add red vertical lines for each month with a COVID-19 order
-                const orderMonths = new Set(orders.map(d => d3.timeMonth(d).getTime()));
-
-                g.selectAll(".order-line")
-                    .data(filteredData.filter(d => orderMonths.has(d.lab_report_date.getTime())))
-                    .enter().append("line")
-                    .attr("class", "order-line")
-                    .attr("x1", d => x(d.lab_report_date))
-                    .attr("x2", d => x(d.lab_report_date))
-                    .attr("y1", 0)
-                    .attr("y2", height);
+                // Add red vertical lines for each order date in the selected year
+                if (year !== "all") {
+                    g.selectAll(".order-line")
+                        .data(orders.filter(d => d.Date.getFullYear() === year))
+                        .enter().append("line")
+                        .attr("class", "order-line")
+                        .attr("x1", d => x(d.Date))
+                        .attr("x2", d => x(d.Date))
+                        .attr("y1", 0)
+                        .attr("y2", height);
+                } else {
+                    const orderMonths = new Set(orders.map(d => d3.timeMonth(d.Date).getTime()));
+                    g.selectAll(".order-line")
+                        .data(filteredData.filter(d => orderMonths.has(d.lab_report_date.getTime())))
+                        .enter().append("line")
+                        .attr("class", "order-line")
+                        .attr("x1", d => x(d.lab_report_date))
+                        .attr("x2", d => x(d.lab_report_date))
+                        .attr("y1", 0)
+                        .attr("y2", height);
+                }
 
                 // Display order list for the selected year
                 if (year !== "all") {
-                    const filteredOrders = orders.filter(order => order.Date.getFullYear() === year);
+                    const filteredOrders = orders
+                        .filter(order => order.Date.getFullYear() === year)
+                        .sort((a, b) => a.Date - b.Date);
                     const orderList = d3.select(".order-list").html("");
 
                     filteredOrders.forEach(order => {
@@ -309,6 +350,12 @@
                             .on("click", function() {
                                 d3.selectAll(".order-description").style("display", "none");
                                 d3.select(this).select(".order-description").style("display", "block");
+
+                                // Highlight the corresponding order line on the graph
+                                g.selectAll(".order-line").classed("highlight", false);
+                                g.selectAll(".order-line")
+                                    .filter(d => d.Date && d.Date.getTime() === order.Date.getTime())
+                                    .classed("highlight", true);
                             });
 
                         orderItem.append("div")
