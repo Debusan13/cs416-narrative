@@ -241,7 +241,7 @@
         .attr("height", height)
         .attr("fill", "none")
         .attr("pointer-events", "all")
-        .on("mouseover", (event, d) => {
+        .on("mouseover", (d, i) => {
           tooltip.style("opacity", 1)
             .html(`Date: ${d3.timeFormat("%B %Y")(d.lab_report_date)}<br>
                                Cases: ${d.cases_total}<br>
