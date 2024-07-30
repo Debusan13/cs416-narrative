@@ -1,4 +1,3 @@
-<!-- AI-Assisted -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -75,25 +74,24 @@
     <script>
         // URL of the dataset
         const url = "https://data.cityofchicago.org/resource/naz8-j4nc.json?$select=lab_report_date,cases_total,deaths_total,hospitalizations_total&$limit=5000";
-
-        // List of COVID-19 order dates
-        const orderDates = [
-            "5/13/24", "5/11/23", "1/1/23", "4/29/20", "12/21/21", "8/20/21", "6/30/21", "6/11/21",
-            "5/18/21", "5/18/21", "3/2/21", "1/15/21", "1/20/21", "1/31/21", "1/31/21", "12/16/20",
-            "11/20/20", "11/20/20", "11/16/20", "11/10/20", "10/30/20", "10/30/20", "10/23/20", "10/1/20",
-            "10/1/20", "10/1/20", "7/2/20", "7/24/20", "7/10/20", "6/1/20", "5/29/20", "5/12/20",
-            "5/8/20", "5/1/20", "4/29/20", "4/12/20", "4/8/20", "4/7/20", "4/6/20", "3/26/20",
-            "3/19/20", "3/18/20"
-        ].map(d => new Date(d));
+        const ordersUrl = "covid19_orders.csv";
 
         // Fetch the data
-        d3.json(url).then(data => {
+        Promise.all([
+            d3.json(url),
+            d3.csv(ordersUrl)
+        ]).then(([data, orders]) => {
             // Parse the date and convert totals to numbers
             data.forEach(d => {
                 d.lab_report_date = new Date(d.lab_report_date);
                 d.cases_total = +d.cases_total;
                 d.deaths_total = +d.deaths_total;
                 d.hospitalizations_total = +d.hospitalizations_total;
+            });
+
+            // Parse the orders data
+            orders.forEach(order => {
+                order.Date = new Date(order.Date);
             });
 
             // Aggregate data by month
@@ -288,7 +286,7 @@
                     });
 
                 // Add red vertical lines for each month with a COVID-19 order
-                const orderMonths = new Set(orderDates.map(d => d3.timeMonth(d).getTime()));
+                const orderMonths = new Set(orders.map(d => d3.timeMonth(d).getTime()));
 
                 g.selectAll(".order-line")
                     .data(filteredData.filter(d => orderMonths.has(d.lab_report_date.getTime())))
@@ -298,6 +296,28 @@
                     .attr("x2", d => x(d.lab_report_date))
                     .attr("y1", 0)
                     .attr("y2", height);
+
+                // Display order list for the selected year
+                if (year !== "all") {
+                    const filteredOrders = orders.filter(order => order.Date.getFullYear() === year);
+                    const orderList = d3.select(".order-list").html("");
+
+                    filteredOrders.forEach(order => {
+                        const orderItem = orderList.append("div")
+                            .attr("class", "order-item")
+                            .text(`${order.Title} (${d3.timeFormat("%B %d, %Y")(order.Date)})`)
+                            .on("click", function() {
+                                d3.selectAll(".order-description").style("display", "none");
+                                d3.select(this).select(".order-description").style("display", "block");
+                            });
+
+                        orderItem.append("div")
+                            .attr("class", "order-description")
+                            .text(order.Details);
+                    });
+                } else {
+                    d3.select(".order-list").html("");
+                }
             }
 
             // Initial chart display for all years
