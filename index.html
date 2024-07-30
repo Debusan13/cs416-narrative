@@ -1,0 +1,262 @@
+<!-- AI-Assisted -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COVID-19 Data Visualization</title>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <style>
+        .line {
+            fill: none;
+            stroke-width: 2px;
+        }
+        .cases {
+            stroke: steelblue;
+        }
+        .deaths {
+            stroke: red;
+        }
+        .hospitalizations {
+            stroke: green;
+        }
+        .axis-label {
+            font-size: 12px;
+        }
+        .legend {
+            font-size: 12px;
+        }
+        .grid-line {
+            stroke: lightgrey;
+            stroke-opacity: 0.5;
+            stroke-width: 1px;
+            shape-rendering: crispEdges;
+        }
+        .x-axis-year .tick line {
+            stroke: none;
+        }
+        .tooltip {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .order-line {
+            stroke: red;
+            stroke-width: 2px;
+            stroke-dasharray: 4;
+        }
+    </style>
+</head>
+<body>
+    <svg width="1200" height="600"></svg>
+    <script>
+        // URL of the dataset
+        const url = "https://data.cityofchicago.org/resource/naz8-j4nc.json?$select=lab_report_date,cases_total,deaths_total,hospitalizations_total&$limit=5000";
+        const ordersUrl = "covid19_orders.csv";
+
+        // Fetch the data
+        Promise.all([
+            d3.json(url),
+            d3.csv(ordersUrl)
+        ]).then(([data, orders]) => {
+            // Parse the date and convert totals to numbers
+            data.forEach(d => {
+                d.lab_report_date = new Date(d.lab_report_date);
+                d.cases_total = +d.cases_total;
+                d.deaths_total = +d.deaths_total;
+                d.hospitalizations_total = +d.hospitalizations_total;
+            });
+
+            // Parse the orders data
+            const orderDates = orders.map(d => new Date(d.Date));
+
+            // Aggregate data by month
+            const monthlyData = d3.nest()
+                .key(d => d3.timeMonth(d.lab_report_date))
+                .rollup(values => ({
+                    lab_report_date: d3.timeMonth(values[0].lab_report_date),
+                    cases_total: d3.sum(values, d => d.cases_total),
+                    deaths_total: d3.sum(values, d => d.deaths_total),
+                    hospitalizations_total: d3.sum(values, d => d.hospitalizations_total)
+                }))
+                .entries(data)
+                .map(d => d.value)
+                .sort((a, b) => a.lab_report_date - b.lab_report_date);
+
+            // Set up the SVG canvas dimensions
+            const svg = d3.select("svg");
+            const margin = { top: 20, right: 30, bottom: 40, left: 50 };
+            const width = +svg.attr("width") - margin.left - margin.right;
+            const height = +svg.attr("height") - margin.top - margin.bottom - 10;
+            const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Create scales
+            const x = d3.scaleTime().range([0, width]);
+            const y = d3.scaleLog().base(10).range([height, 0]);
+
+            // Set the domains for the scales
+            x.domain(d3.extent(monthlyData, d => d.lab_report_date));
+            y.domain([1, d3.max(monthlyData, d => Math.max(d.cases_total, d.deaths_total, d.hospitalizations_total))]);
+
+            // Create axes
+            const xAxis = d3.axisBottom(x)
+                .ticks(d3.timeMonth.every(1))
+                .tickFormat(d3.timeFormat("%b"))
+                .tickPadding(10);
+
+            const yAxis = d3.axisLeft(y)
+                .tickValues([1, 10, 100, 1000, 10000, 100000])
+                .tickFormat(d3.format("~s"))
+                .tickPadding(10);
+
+            // Append the axes
+            g.append("g")
+                .attr("class", "x-axis")
+                .attr("transform", `translate(0,${height})`)
+                .call(xAxis);
+
+            g.append("g")
+                .attr("class", "y-axis")
+                .call(yAxis);
+
+            // Create line generators
+            const lineCases = d3.line()
+                .x(d => x(d.lab_report_date))
+                .y(d => y(d.cases_total));
+
+            const lineDeaths = d3.line()
+                .x(d => x(d.lab_report_date))
+                .y(d => y(d.deaths_total));
+
+            const lineHospitalizations = d3.line()
+                .x(d => x(d.lab_report_date))
+                .y(d => y(d.hospitalizations_total));
+
+            // Append the lines
+            g.append("path")
+                .datum(monthlyData)
+                .attr("class", "line cases")
+                .attr("d", lineCases);
+
+            g.append("path")
+                .datum(monthlyData)
+                .attr("class", "line deaths")
+                .attr("d", lineDeaths);
+
+            g.append("path")
+                .datum(monthlyData)
+                .attr("class", "line hospitalizations")
+                .attr("d", lineHospitalizations);
+
+            // Add axis labels
+            svg.append("text")
+                .attr("class", "axis-label")
+                .attr("transform", `translate(${width / 2 + margin.left},${height + margin.top + 50})`)
+                .style("text-anchor", "middle")
+                .text("Date");
+
+            svg.append("text")
+                .attr("class", "axis-label")
+                .attr("transform", "rotate(-90)")
+                .attr("y", margin.left - 40)
+                .attr("x", 0 - (height / 2 + margin.top))
+                .attr("dy", "1em")
+                .style("text-anchor", "middle")
+                .text("Total");
+
+            // Add legend
+            const legend = svg.append("g")
+                .attr("class", "legend")
+                .attr("transform", `translate(${width - 100},${margin.top})`);
+
+            legend.append("rect")
+                .attr("x", 0)
+                .attr("y", 0)
+                .attr("width", 10)
+                .attr("height", 10)
+                .attr("fill", "steelblue");
+
+            legend.append("text")
+                .attr("x", 20)
+                .attr("y", 10)
+                .text("Cases");
+
+            legend.append("rect")
+                .attr("x", 0)
+                .attr("y", 20)
+                .attr("width", 10)
+                .attr("height", 10)
+                .attr("fill", "red");
+
+            legend.append("text")
+                .attr("x", 20)
+                .attr("y", 30)
+                .text("Deaths");
+
+            legend.append("rect")
+                .attr("x", 0)
+                .attr("y", 40)
+                .attr("width", 10)
+                .attr("height", 10)
+                .attr("fill", "green");
+
+            legend.append("text")
+                .attr("x", 20)
+                .attr("y", 50)
+                .text("Hospitalizations");
+
+            // Add year labels to the x-axis
+            g.append("g")
+                .attr("class", "x-axis-year")
+                .attr("transform", `translate(0,${height + 5})`)
+                .call(d3.axisBottom(x).ticks(d3.timeYear.every(1)).tickFormat(d3.timeFormat("%Y")).tickSize(10).tickPadding(10));
+
+            // Create a tooltip
+            const tooltip = d3.select("body").append("div")	
+                .attr("class", "tooltip")				
+                .style("opacity", 0);
+
+            // Add invisible rectangles for each month section
+            g.selectAll(".month-rect")
+                .data(monthlyData)
+                .enter().append("rect")
+                .attr("class", "month-rect")
+                .attr("x", d => x(d.lab_report_date))
+                .attr("y", 0)
+                .attr("width", width / monthlyData.length)
+                .attr("height", height)
+                .attr("fill", "none")
+                .attr("pointer-events", "all")
+                .on("mouseover", (event, d) => {
+                    tooltip.style("opacity", 1)
+                        .html(`Date: ${d3.timeFormat("%B %Y")(d.lab_report_date)}<br>
+                               Cases: ${d.cases_total}<br>
+                               Deaths: ${d.deaths_total}<br>
+                               Hospitalizations: ${d.hospitalizations_total}`)
+                        .style("left", `${event.pageX + 10}px`)
+                        .style("top", `${event.pageY + 10}px`);
+                })
+                .on("mouseout", () => {
+                    tooltip.style("opacity", 0);
+                });
+
+            // Add red vertical lines for each month with a COVID-19 order
+            const orderMonths = new Set(orderDates.map(d => d3.timeMonth(d).getTime()));
+
+            g.selectAll(".order-line")
+                .data(monthlyData.filter(d => orderMonths.has(d.lab_report_date.getTime())))
+                .enter().append("line")
+                .attr("class", "order-line")
+                .attr("x1", d => x(d.lab_report_date))
+                .attr("x2", d => x(d.lab_report_date))
+                .attr("y1", 0)
+                .attr("y2", height);
+        });
+    </script>
+</body>
+</html>
