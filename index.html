@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>COVID-19 Data Visualization</title>
     <script src="https://d3js.org/d3.v5.min.js" charset="utf-8"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-annotation/2.5.1/d3-annotation.min.js"></script>
     <style>
         .line {
             fill: none;
@@ -90,19 +91,15 @@
             text-align: center;
             margin-top: 20px;
         }
+        .highlight-button {
+            background-color: yellow;
+        }
     </style>
 </head>
 <body>
     <h1>City of Chicago Covid 19 Orders and Their Effects</h1>
     <p>Click on any year to see the hospitalizations, cases, and deaths due to SARS-COV 19 in the city of Chicago. After clicking on a year, the city COVID-19 orders for that year will be
-    will be shown below the graph. Click on any order to see it highlighted on the graph and details of the order. Alternatively click on "By Neighborhood" to see the hospitalizations, cases, and deaths due to SARS-COV 19 
-    for each community area in Chicago, from there a year can be selected and COVID orders can be highlighted.</p>
-    <div class="dropdown-container">
-        <label for="community-dropdown">Select Community Area: </label>
-        <select id="community-dropdown">
-            <option value="">--Select--</option>
-        </select>
-    </div>
+    will be shown below the graph. Click on any order to see it highlighted on the graph and details of the order. </p>
     <div class="community-info"></div>
     <div class="button-container">
         <button id="btn-all">All Years</button>
@@ -116,18 +113,15 @@
     <svg width="100%" height="600"></svg>
     <div class="order-list"></div>
     <script>
-        // URLs of the datasets
         const covidDataUrl = "https://data.cityofchicago.org/resource/naz8-j4nc.json?$select=lab_report_date,cases_total,deaths_total,hospitalizations_total&$limit=5000";
         const ordersUrl = "covid19_orders.csv";
         const communityDataUrl = "https://data.cityofchicago.org/resource/xhc6-88s9.json";
 
-        // Fetch the data
         Promise.all([
             d3.json(covidDataUrl),
             d3.csv(ordersUrl),
             d3.json(communityDataUrl)
         ]).then(([covidData, orders, communityData]) => {
-            // Parse the date and convert totals to numbers
             covidData.forEach(d => {
                 d.lab_report_date = new Date(d.lab_report_date);
                 d.cases_total = +d.cases_total;
@@ -135,37 +129,10 @@
                 d.hospitalizations_total = +d.hospitalizations_total;
             });
 
-            // Parse the orders data
             orders.forEach(order => {
                 order.Date = new Date(order.Date);
             });
 
-            // Populate the dropdown menu with community area names
-            const dropdown = d3.select("#community-dropdown");
-            communityData
-                .filter(community => community.community_area_name)
-                .forEach(community => {
-                dropdown.append("option")
-                    .attr("value", community.community_area_name)
-                    .text(community.community_area_name);
-            });
-
-            // Display community information when a community is selected
-            dropdown.on("change", function() {
-                const selectedCommunity = this.value;
-                const communityInfo = communityData.find(c => c.community_area_name === selectedCommunity);
-                if (communityInfo) {
-                    d3.select(".community-info").html(`
-                        <p><strong>Community Area:</strong> ${communityInfo.community_area_name}</p>
-                        <p><strong>Rank Socioeconomic Status:</strong> ${communityInfo.rank_socioeconomic_status}</p>
-                        <p><strong>CCVI Score:</strong> ${communityInfo.ccvi_score}</p>
-                    `);
-                } else {
-                    d3.select(".community-info").html("");
-                }
-            });
-
-            // Aggregate data by month
             const monthlyData = d3.nest()
                 .key(d => d3.timeMonth(d.lab_report_date))
                 .rollup(values => ({
@@ -178,32 +145,25 @@
                 .map(d => d.value)
                 .sort((a, b) => a.lab_report_date - b.lab_report_date);
 
-            // Function to update the chart based on the selected year
             function updateChart(year) {
-                // Filter data for the selected year or show all data
                 const filteredData = year === "all" ? monthlyData : monthlyData.filter(d => d.lab_report_date.getFullYear() === year);
 
-                // Clear the SVG container
                 d3.select("svg").html("");
 
-                // Set up the SVG canvas dimensions
                 const svg = d3.select("svg");
                 const margin = { top: 20, right: 150, bottom: 40, left: 50 };
                 const width = svg.node().getBoundingClientRect().width - margin.left - margin.right;
                 const height = +svg.attr("height") - margin.top - margin.bottom - 10;
                 const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-                // Create scales
                 const x = d3.scaleTime().range([0, width]);
                 const y = d3.scaleLog().base(10).range([height, 0]);
 
-                // Set the domains for the scales
                 const xDomain = d3.extent(filteredData, d => d.lab_report_date);
-                xDomain[1] = d3.timeMonth.offset(xDomain[1], 1); // Extend the domain to include the entire month of December
+                xDomain[1] = d3.timeMonth.offset(xDomain[1], 1);
                 x.domain(xDomain);
                 y.domain([1, d3.max(filteredData, d => Math.max(d.cases_total, d.deaths_total, d.hospitalizations_total))]);
 
-                // Create axes
                 const xAxis = d3.axisBottom(x)
                     .ticks(d3.timeMonth.every(1))
                     .tickFormat(d3.timeFormat("%b"))
@@ -214,7 +174,6 @@
                     .tickFormat(d3.format("~s"))
                     .tickPadding(10);
 
-                // Append the axes
                 g.append("g")
                     .attr("class", "x-axis")
                     .attr("transform", `translate(0,${height})`)
@@ -224,7 +183,6 @@
                     .attr("class", "y-axis")
                     .call(yAxis);
 
-                // Create line generators
                 const lineCases = d3.line()
                     .x(d => x(d.lab_report_date))
                     .y(d => y(d.cases_total));
@@ -237,7 +195,6 @@
                     .x(d => x(d.lab_report_date))
                     .y(d => y(d.hospitalizations_total));
 
-                // Append the lines
                 g.append("path")
                     .datum(filteredData)
                     .attr("class", "line cases")
@@ -253,7 +210,6 @@
                     .attr("class", "line hospitalizations")
                     .attr("d", lineHospitalizations);
 
-                // Add axis labels
                 svg.append("text")
                     .attr("class", "axis-label")
                     .attr("transform", `translate(${width / 2 + margin.left},${height + margin.top + 50})`)
@@ -269,7 +225,6 @@
                     .style("text-anchor", "middle")
                     .text("Total");
 
-                // Add legend
                 const legend = svg.append("g")
                     .attr("class", "legend")
                     .attr("transform", `translate(${width + 60},${margin.top})`);
@@ -310,7 +265,6 @@
                     .attr("y", 50)
                     .text("Hospitalizations");
 
-                // Add dashed red line to the legend
                 legend.append("line")
                     .attr("x1", 0)
                     .attr("y1", 70)
@@ -323,18 +277,15 @@
                     .attr("y", 75)
                     .text("COVID-19 Orders");
 
-                // Add year labels to the x-axis
                 g.append("g")
                     .attr("class", "x-axis-year")
                     .attr("transform", `translate(0,${height + 5})`)
                     .call(d3.axisBottom(x).ticks(d3.timeYear.every(1)).tickFormat(d3.timeFormat("%Y")).tickSize(10).tickPadding(10));
 
-                // Create a tooltip
                 const tooltip = d3.select("body").append("div")	
                     .attr("class", "tooltip")				
                     .style("opacity", 0);
 
-                // Add invisible rectangles for each month section
                 g.selectAll(".month-rect")
                     .data(filteredData)
                     .enter().append("rect")
@@ -358,7 +309,6 @@
                         tooltip.style("opacity", 0);
                     });
 
-                // Add red vertical lines for each order date in the selected year
                 if (year !== "all") {
                     g.selectAll(".order-line")
                         .data(orders.filter(d => d.Date.getFullYear() === year))
@@ -380,7 +330,6 @@
                         .attr("y2", height);
                 }
 
-                // Display order list for the selected year
                 if (year !== "all") {
                     const filteredOrders = orders
                         .filter(order => order.Date.getFullYear() === year)
@@ -395,7 +344,6 @@
                                 d3.selectAll(".order-description").style("display", "none");
                                 d3.select(this).select(".order-description").style("display", "block");
 
-                                // Highlight the corresponding order line on the graph
                                 g.selectAll(".order-line").classed("highlight", false);
                                 g.selectAll(".order-line")
                                     .filter(d => d.Date && d.Date.getTime() === order.Date.getTime())
@@ -409,18 +357,107 @@
                 } else {
                     d3.select(".order-list").html("");
                 }
+
+                // Highlight steep decline at the start of 2022
+                if (year === "all" || year === 2022) {
+                    const declineStart = new Date("2022-01-01");
+                    const declineEnd = new Date("2022-03-01");
+                    g.append("rect")
+                        .attr("x", x(declineStart))
+                        .attr("y", y(d3.max(filteredData, d => d.cases_total)))
+                        .attr("width", x(declineEnd) - x(declineStart))
+                        .attr("height", y(1) - y(d3.max(filteredData, d => d.cases_total)))
+                        .attr("fill", "yellow")
+                        .attr("opacity", 0.3);
+
+                    // Add annotation for 2021 button if view is "all years"
+                    if (year === "all") {
+                        const annotations = [
+                            {
+                                note: {
+                                    label: "Notice the steep decline in cases, deaths, and hospitilizations. Click the 2021 button to investigate the what COVID Orders were given by the city prior to this. Check the bottom of the page to see the prior two orders, click them to see more details.",
+                                    title: "2021 Data",
+                                    wrap: 200
+                                },
+                                connector: {
+                                    end: "arrow"
+                                },
+                                x: d3.select("#btn-2021").node().getBoundingClientRect().left,
+                                y: d3.select("#btn-2021").node().getBoundingClientRect().top,
+                                dx: 100,
+                                dy: 50
+                            }
+                        ];
+
+                        const makeAnnotations = d3.annotation()
+                            .type(d3.annotationLabel)
+                            .annotations(annotations);
+
+                        d3.select("svg")
+                            .append("g")
+                            .attr("class", "annotation-group")
+                            .call(makeAnnotations);
+                    }
+                }
             }
 
-            // Initial chart display for all years
             updateChart("all");
 
-            // Add event listeners to the buttons
-            d3.select("#btn-all").on("click", () => updateChart("all"));
+            d3.select("#btn-all").on("click", () => {
+                updateChart("all");
+                d3.selectAll(".annotation-group").remove();
+            });
             d3.select("#btn-2020").on("click", () => updateChart(2020));
             d3.select("#btn-2021").on("click", () => updateChart(2021));
             d3.select("#btn-2022").on("click", () => updateChart(2022));
             d3.select("#btn-2023").on("click", () => updateChart(2023));
+
+            // Highlight last COVID order
+            const lastOrder = orders[orders.length - 1];
+            d3.select(".order-list").append("div")
+                .attr("class", "order-item highlight")
+                .text(`${lastOrder.Title} (${d3.timeFormat("%B %d, %Y")(lastOrder.Date)})`)
+                .on("click", function() {
+                    d3.selectAll(".order-description").style("display", "none");
+                    d3.select(this).select(".order-description").style("display", "block");
+
+                    d3.selectAll(".order-line").classed("highlight", false);
+                    d3.selectAll(".order-line")
+                        .filter(d => d.Date && d.Date.getTime() === lastOrder.Date.getTime())
+                        .classed("highlight", true);
+                })
+                .append("div")
+                .attr("class", "order-description")
+                .text(lastOrder.Details);
+
+            // Highlight second to last COVID order
+            const secondLastOrder = orders[orders.length - 2];
+            d3.select(".order-list").append("div")
+                .attr("class", "order-item highlight")
+                .text(`${secondLastOrder.Title} (${d3.timeFormat("%B %d, %Y")(secondLastOrder.Date)})`)
+                .on("click", function() {
+                    d3.selectAll(".order-description").style("display", "none");
+                    d3.select(this).select(".order-description").style("display", "block");
+
+                    d3.selectAll(".order-line").classed("highlight", false);
+                    d3.selectAll(".order-line")
+                        .filter(d => d.Date && d.Date.getTime() === secondLastOrder.Date.getTime())
+                        .classed("highlight", true);
+                })
+                .append("div")
+                .attr("class", "order-description")
+                .text(secondLastOrder.Details);
+
+            const makeAnnotationsAllYears = d3.annotation()
+                .type(d3.annotationLabel)
+                .annotations(annotationsAllYears);
+
+            d3.select("svg")
+                .append("g")
+                .attr("class", "annotation-group")
+                .call(makeAnnotationsAllYears);
         });
+        
     </script>
 </body>
 </html>
